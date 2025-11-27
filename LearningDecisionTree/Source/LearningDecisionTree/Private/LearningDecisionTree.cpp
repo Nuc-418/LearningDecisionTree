@@ -38,36 +38,31 @@ void ULearningDecisionTree::AddRow(const TArray<int32>& Row)
 
 void ULearningDecisionTree::CreateDecisionTree()
 {
+	// Clear previous tree state
 	NodesToExplode.Empty();
 	LDTRoot.Empty();
 
+	// Create the initial root TableNode containing the full dataset
 	ULearningDecisionTreeTableNode* RootNode = NewObject<ULearningDecisionTreeTableNode>(this);
-	// Root node is at index 0 of LDTRoot
 	LDTRoot.Add(RootNode);
 
-	// Init root node. It adds itself to NodesToExplode.
+	// Init root node. It adds itself to NodesToExplode queue.
+	// We pass LDTRoot as the parent list so the RootNode can eventually replace itself
+	// with the final DecisionNode or ActionNode.
 	RootNode->Init(Table, NodesToExplode, &LDTRoot, 0);
 
-	// Loop through NodesToExplode
-	// Note: NodesToExplode grows as we explode nodes.
-	// C# Loop:
-	/*
-        for (int tableNode = 0; tableNode < nodeToExplode.Count + 1; tableNode++)
-        {
-            nodeToExplode[0].ExplodeNode(nodeToExplode);
-            nodeToExplode.RemoveAt(0);
-            tableNode = 0;
-        }
-	*/
-	// This C# loop is a bit weird. It constantly removes 0 and resets counter. Basically a while loop.
-
+	// Iteratively process nodes until the queue is empty
+	// Note: NodesToExplode grows as TableNodes split into children TableNodes.
 	while (NodesToExplode.Num() > 0)
 	{
 		ULearningDecisionTreeNode* Node = NodesToExplode[0];
 		if (Node)
 		{
+			// ExplodeNode will process the node (split it or make it a leaf)
+			// and potentially add new children to NodesToExplode.
 			Node->ExplodeNode(NodesToExplode);
 		}
+		// Remove the processed node from the queue
 		NodesToExplode.RemoveAt(0);
 	}
 }
@@ -104,21 +99,11 @@ void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 	FMemoryWriter MemoryWriter(Bytes, true);
 	FLearningDecisionTreeTable& TableRef = Table;
 
-	// Create a simple Archive for struct
-	// Note: FLearningDecisionTreeTable is a USTRUCT with UPROPERTY, so we could use FObjectWriter if it was a UObject,
-	// or standard serialization if it implemented << operator.
-	// Since we are inside a UObject, we can't easily Serialize just the struct with UProperties automatically without a wrapper archive
-	// that supports UProperties or manual serialization.
-
-	// However, since we are in a plugin, let's implement operator<< for the struct or manually serialize fields.
-	// Or use `FObjectAndNameAsStringProxyArchive`.
-
-	// Actually, simpler: Use `FFileHelper::SaveArrayToFile`? No, we need to serialize map.
-
-	// Let's implement a helper to serialize the table manually to be safe and portable.
+	// Manual serialization to ensure stability and control over format
 
 	MemoryWriter << TableRef.TotalRows;
-	// Serialize ColumnNames as strings
+
+	// Serialize ColumnNames as strings for safety/portability
 	int32 NumCols = TableRef.ColumnNames.Num();
 	MemoryWriter << NumCols;
 	for (const FName& Name : TableRef.ColumnNames)
@@ -127,6 +112,7 @@ void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 		MemoryWriter << NameStr;
 	}
 
+	// Serialize TableData Map manually
 	int32 NumColumns = TableRef.TableData.Num();
 	MemoryWriter << NumColumns;
 	for (auto& Pair : TableRef.TableData)
@@ -156,6 +142,7 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 
 		MemoryReader << Table.TotalRows;
 
+		// Deserialize ColumnNames
 		int32 NumColsInNames = 0;
 		MemoryReader << NumColsInNames;
 		for (int32 i = 0; i < NumColsInNames; i++)
@@ -165,6 +152,7 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 			Table.ColumnNames.Add(FName(*NameStr));
 		}
 
+		// Deserialize TableData
 		int32 NumColumns = 0;
 		MemoryReader << NumColumns;
 		for (int32 i = 0; i < NumColumns; i++)
@@ -180,49 +168,18 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 
 void ULearningDecisionTree::SaveDecisionTree(FString FolderPath, FString FileName)
 {
-	// Saving the UObject tree is more complex because of pointers.
-	// We can use `FObjectAndNameAsStringProxyArchive`.
+	// Saving the UObject tree requires handling pointers and polymorphism.
 
 	FString FullPath = FPaths::Combine(FolderPath, FileName + TEXT(".tree"));
 
-	// We need to serialize the whole object graph starting from LDTRoot.
-	// The standard way to save UObjects to disk is using a Package, but here we want a custom file.
-
-	// Alternatively, since we are rebuilding the tree from Table data every time in `CreateDecisionTree`,
-	// maybe we don't strictly need to save the Tree if we save the Table?
-	// The C# code saves both. `CreateDecisionTree` is computationally expensive so saving the tree is good.
-
-	// Let's try to use `FObjectWriter`.
 	TArray<uint8> Bytes;
 	FMemoryWriter MemoryWriter(Bytes, true);
 
-	// Wrap in Proxy Archive to handle UObjects serialization
+	// Use a Proxy Archive to handle UProperties of the nodes
 	FObjectAndNameAsStringProxyArchive Ar(MemoryWriter, true);
-	Ar.ArIsSaveGame = false; // Serialize all properties (Fix: was true)
+	Ar.ArIsSaveGame = false; // Serialize all properties
 
-	// We serialize the whole ULearningDecisionTree object? No, just the tree nodes.
-	// But the nodes are UObjects.
-
-	// To serialize UObjects properly including their class type (to handle polymorphism),
-	// we usually need to serialize the Class Path and then properties.
-
-	// A simpler approach for this specific structure:
-	// Recursively serialize nodes.
-
-	// BUT, `FObjectAndNameAsStringProxyArchive` is good for properties.
-
-	// Let's just serialize `LDTRoot`.
-	// Since `LDTRoot` contains pointers, `operator<<` on TArray<UObject*> only serializes the pointer value (index/ID) usually,
-	// unless using a specific archiver.
-
-	// Given the complexity of implementing robust UObject graph serialization from scratch in a simple plugin without the Engine's full serialization context (Packages),
-	// and the fact that the tree can be deterministically recreated from the Table,
-	// I will implement Save/Load DecisionTree by relying on the Table.
-	// IF the user loads a tree, they probably expect it to be the one generated from the table.
-	// The C# `LoadDecisionTree` loads the binary serialized list of nodes.
-
-	// Strategy: Use a recursive function to serialize the node data manually, writing a type identifier first.
-
+	// Recursively serialize the tree starting from the root list
 	SerializeNodes(Ar, LDTRoot);
 
 	FFileHelper::SaveArrayToFile(Bytes, *FullPath);
@@ -237,17 +194,14 @@ void ULearningDecisionTree::LoadDecisionTree(FString FolderPath, FString FileNam
 	{
 		FMemoryReader MemoryReader(Bytes, true);
 		FObjectAndNameAsStringProxyArchive Ar(MemoryReader, true);
-		Ar.ArIsSaveGame = false; // Fix: was true
+		Ar.ArIsSaveGame = false;
 
+		// Deserialize recursively, reconstructing the UObject graph
 		DeserializeNodes(Ar, LDTRoot, this);
 	}
 }
 
-// Helper for serialization (needs to be added to header or kept private static)
-// I'll add them as private member functions in .cpp or helper class?
-// Since I can't easily change header now without another tool call, I'll use a static helper in .cpp
-// But wait, I need access to private members of nodes? No, they are public properties or I can cast.
-// Properties in nodes are public.
+// Helpers for manual polymorphic serialization of the node tree
 
 static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node);
 static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* Outer);
@@ -279,6 +233,7 @@ void DeserializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes, U
 
 static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node)
 {
+	// Write a type identifier to handle polymorphism
 	// 0: Null, 1: TableNode, 2: DecisionNode, 3: ActionNode
 	uint8 NodeType = 0;
 	if (!Node)
@@ -293,27 +248,16 @@ static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node)
 
 	Ar << NodeType;
 
-	// Serialize properties
+	// Serialize properties using the archive
 	Node->Serialize(Ar);
 
-	// For DecisionNode, we need to recursively serialize children
+	// For DecisionNode, we need to recursively serialize its children
 	if (NodeType == 2) // DecisionNode
 	{
 		ULearningDecisionTreeDecisionNode* DNode = Cast<ULearningDecisionTreeDecisionNode>(Node);
 		SerializeNodes(Ar, DNode->Nodes);
 	}
-
-	// TableNode has NextNodes but they are transient during building?
-	// In C#, TableNode `nextNodes` are used to build `lastNodes`.
-	// But once built, `LDTRoot` contains the structure.
-	// Wait, `TableNode` logic in C#:
-	// `lastNodes[thisNodeIndex] = new DecisionNode(...)`
-	// This replaces the TableNode in the parent list with a DecisionNode.
-	// So a fully built tree should NOT contain TableNodes!
-	// TableNodes are only temporary placeholders during construction.
-
-	// If the tree is fully built, it consists of DecisionNodes and ActionNodes.
-	// If `CreateDecisionTree` has finished, LDTRoot[0] should be a DecisionNode or ActionNode.
+	// TableNodes and ActionNodes don't have persistent children structure to save
 }
 
 static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* Outer)
@@ -323,14 +267,17 @@ static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* O
 
 	ULearningDecisionTreeNode* Node = nullptr;
 
+	// Instantiate the correct class based on type identifier
 	if (NodeType == 1) Node = NewObject<ULearningDecisionTreeTableNode>(Outer);
 	else if (NodeType == 2) Node = NewObject<ULearningDecisionTreeDecisionNode>(Outer);
 	else if (NodeType == 3) Node = NewObject<ULearningDecisionTreeActionNode>(Outer);
 
 	if (Node)
 	{
+		// Deserialize properties
 		Node->Serialize(Ar);
 
+		// Recursively deserialize children for DecisionNodes
 		if (NodeType == 2)
 		{
 			ULearningDecisionTreeDecisionNode* DNode = Cast<ULearningDecisionTreeDecisionNode>(Node);

@@ -3,13 +3,13 @@
 
 int32 ULearningDecisionTreeNode::Eval(const TArray<int32>& Row)
 {
-	// Default implementation
+	// Default implementation returns -1 (error/no action)
 	return -1;
 }
 
 void ULearningDecisionTreeNode::ExplodeNode(TArray<ULearningDecisionTreeNode*>& NodesToExplode)
 {
-	// Default implementation
+	// Default implementation does nothing
 }
 
 // ============================================================================
@@ -22,6 +22,7 @@ void ULearningDecisionTreeTableNode::Init(const FLearningDecisionTreeTable& InTa
 	ParentList = InParentList;
 	ThisNodeIndex = InIndex;
 
+	// Add this node to the processing queue to be exploded later
 	InNodesToExplode.Add(this);
 }
 
@@ -35,6 +36,7 @@ float ULearningDecisionTreeTableNode::ColumnEntropy(int32 ColumnIndex)
 		float StateProb = Table.IndividualStateProbability(ColumnIndex, State);
 		if (StateProb != 0)
 		{
+			// Entropy = -Sum(p * log2(p))
 			Entropy -= StateProb * FMath::Log2(StateProb);
 		}
 	}
@@ -57,16 +59,17 @@ float ULearningDecisionTreeTableNode::ArrayEntropy(const TArray<int32>& Occurren
 
 float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 {
-	// Action column is the second to last (Last is duplicates)
-	// In C#: `int actionColumn = table.tableData.Count - 2;`
+	// The target action column is the second to last (Last is duplicates count)
 	int32 ActionColumn = Table.ColumnNames.Num() - 2;
 	int32 TableRowCount = Table.GetTableRowCount();
 
+	// Base entropy of the target set
 	float Gain = ColumnEntropy(ActionColumn);
 
 	TArray<int32> ColumnStates = Table.GetColumnStates(ColumnIndex);
 	TArray<int32> ActionStates = Table.GetColumnStates(ActionColumn);
 
+	// Subtract conditional entropy for each state in the column
 	for (int32 State : ColumnStates)
 	{
 		TArray<int32> ActionsCount;
@@ -80,7 +83,7 @@ float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 				if (Table.TableData[Table.ColumnNames[ColumnIndex]][Row] == State &&
 					Table.TableData[Table.ColumnNames[ActionColumn]][Row] == Action)
 				{
-					// Add duplicates count
+					// Add duplicates count to get true frequency
 					ActionsCount[IndexAction] += Table.TableData[Table.ColumnNames.Last()][Row];
 				}
 			}
@@ -96,25 +99,25 @@ float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 int32 ULearningDecisionTreeTableNode::IndexBestInfoGainColumn()
 {
 	float BestInfoGain = 0;
-	int32 BestInfoGainColumn = -1; // Default to -1 or 0? C# defaults to 0 but returns -1 if empty.
+	int32 BestInfoGainColumn = -1;
 
 	if (Table.ColumnNames.Num() > 0)
 	{
+		// Iterate all feature columns (excluding Action and Duplicates columns)
 		int32 ActionColumn = Table.ColumnNames.Num() - 2;
 
 		for (int32 Column = 0; Column < ActionColumn; Column++)
 		{
 			float ColumnInfoGain = InfoGain(Column);
-			// Changed from <= to < to prioritize first found? No C# uses <=
+
 			if (BestInfoGain <= ColumnInfoGain)
 			{
 				BestInfoGain = ColumnInfoGain;
 				BestInfoGainColumn = Column;
 			}
 		}
-		// If BestInfoGainColumn is still -1 (initially), it means InfoGain was negative? Entropy is positive.
-		// If BestInfoGain is 0, we might return 0.
-		if (BestInfoGainColumn == -1) return 0; // Fallback
+
+		if (BestInfoGainColumn == -1) return 0; // Fallback to first column if no gain found
 		return BestInfoGainColumn;
 	}
 	return -1;
@@ -125,29 +128,30 @@ void ULearningDecisionTreeTableNode::ExplodeNode(TArray<ULearningDecisionTreeNod
 	int32 ActionColumn = Table.ColumnNames.Num() - 2;
 	float ActionColumnEntropy = ColumnEntropy(ActionColumn);
 
-	// In C#: if (!(actionColumnEntropy == 0) && table.tableData.Count > 2)
-	// tableData.Count is number of columns.
-
+	// If entropy is not zero (mixed actions) and we have feature columns left to split on
 	if (ActionColumnEntropy != 0 && Table.ColumnNames.Num() > 2)
 	{
+		// Find best column to split
 		int32 BestCol = IndexBestInfoGainColumn();
 		TArray<int32> StateNames = Table.GetColumnStates(BestCol);
 
+		// Create child nodes for each state of the best column
 		for (int32 State : StateNames)
 		{
 			ULearningDecisionTreeTableNode* NewNode = NewObject<ULearningDecisionTreeTableNode>(GetOuter());
 			FLearningDecisionTreeTable FilteredTable = Table.FilterTableByState(BestCol, State);
-			// We pass NextNodes as the parent list for the children
+			// Initialize new node and add to processing queue (NodesToExplode)
+			// Pass 'NextNodes' as parent list so we can link them to the DecisionNode later
 			NewNode->Init(FilteredTable, NodesToExplode, &NextNodes, NextNodes.Num());
 			NextNodes.Add(NewNode);
 		}
 
-		// Replace self in parent list with DecisionNode
+		// Create a DecisionNode to replace this TableNode
 		ULearningDecisionTreeDecisionNode* DecisionNode = NewObject<ULearningDecisionTreeDecisionNode>(GetOuter());
 		DecisionNode->Init(NextNodes, StateNames, BestCol);
 
-		// CRITICAL FIX: Update children to point to the new DecisionNode's list.
-		// Since DecisionNode copies the array, the existing children (which are in NodesToExplode)
+		// CRITICAL: Update children to point to the new DecisionNode's list.
+		// Since DecisionNode copies the array NextNodes, the existing children (which are in NodesToExplode)
 		// point to the old NextNodes array. We must redirect them to DecisionNode->Nodes.
 		for (int32 i = 0; i < DecisionNode->Nodes.Num(); i++)
 		{
@@ -158,6 +162,7 @@ void ULearningDecisionTreeTableNode::ExplodeNode(TArray<ULearningDecisionTreeNod
 			}
 		}
 
+		// Replace self in the parent list with the new DecisionNode
 		if (ParentList && ParentList->IsValidIndex(ThisNodeIndex))
 		{
 			(*ParentList)[ThisNodeIndex] = DecisionNode;
@@ -165,7 +170,7 @@ void ULearningDecisionTreeTableNode::ExplodeNode(TArray<ULearningDecisionTreeNod
 	}
 	else
 	{
-		// Create ActionNode
+		// Leaf Node: Create ActionNode
 		TArray<int32> IndividualStateCounts;
 		TArray<int32> StateNames = Table.GetColumnStates(ActionColumn);
 
@@ -177,6 +182,7 @@ void ULearningDecisionTreeTableNode::ExplodeNode(TArray<ULearningDecisionTreeNod
 		ULearningDecisionTreeActionNode* ActionNode = NewObject<ULearningDecisionTreeActionNode>(GetOuter());
 		ActionNode->Init(StateNames, IndividualStateCounts);
 
+		// Replace self in the parent list with the new ActionNode
 		if (ParentList && ParentList->IsValidIndex(ThisNodeIndex))
 		{
 			(*ParentList)[ThisNodeIndex] = ActionNode;
@@ -206,6 +212,7 @@ int32 ULearningDecisionTreeDecisionNode::Eval(const TArray<int32>& Row)
 {
 	int32 SelectedNodeIndex = -1;
 
+	// Find which branch to take based on the row value at the split column
 	for (int32 i = 0; i < ColumnStates.Num(); i++)
 	{
 		if (Row.IsValidIndex(BestInfoGainColumn) && ColumnStates[i] == Row[BestInfoGainColumn])
@@ -217,7 +224,7 @@ int32 ULearningDecisionTreeDecisionNode::Eval(const TArray<int32>& Row)
 
 	if (SelectedNodeIndex > -1 && Nodes.IsValidIndex(SelectedNodeIndex))
 	{
-		// Construct new row without the used column
+		// Construct new row without the used column for the next evaluation step
 		TArray<int32> NewRow;
 		for (int32 i = 0; i < Row.Num(); i++)
 		{
@@ -235,7 +242,7 @@ int32 ULearningDecisionTreeDecisionNode::Eval(const TArray<int32>& Row)
 
 void ULearningDecisionTreeDecisionNode::ExplodeNode(TArray<ULearningDecisionTreeNode*>& NodesToExplode)
 {
-	// Do nothing
+	// DecisionNode is a finished node, nothing to explode
 }
 
 
@@ -257,28 +264,8 @@ int32 ULearningDecisionTreeActionNode::RandAction(const TArray<int32>& Probs)
 		Total += Prob;
 	}
 
-	int32 Rand = FMath::RandRange(0, Total); // Inclusive max? FMath::RandRange is [Min, Max] inclusive.
-
-	// C# Logic:
-	// rand = Random.Range(0, total + 1); // [0, total]
-	// loop...
-	// if (rand >= total_accum) ...
-
-	// Let's replicate exact C# logic
-	// Note: C# Random.Range(int min, int max) is max-exclusive for integers.
-	// WAIT. `Random.Range(0, total + 1)` makes it inclusive of `total`.
-	// The loop logic:
-	/*
-        total = 0;
-        int indexObstacle = -1;
-        foreach (int prob in probs)
-            if (rand >= total)
-            {
-                total += prob;
-                indexObstacle++;
-            }
-	*/
-	// If rand == total (max value), and the loop finishes, indexObstacle will include the last item.
+	// Random selection weighted by counts
+	int32 Rand = FMath::RandRange(0, Total);
 
 	int32 CurrentTotal = 0;
 	int32 IndexObstacle = -1;
@@ -301,6 +288,7 @@ int32 ULearningDecisionTreeActionNode::RandAction(const TArray<int32>& Probs)
 
 int32 ULearningDecisionTreeActionNode::Eval(const TArray<int32>& Row)
 {
+	// Return an action based on learned probabilities
 	int32 Index = RandAction(ActionCounts);
 	if (ActionNames.IsValidIndex(Index))
 	{
@@ -311,5 +299,5 @@ int32 ULearningDecisionTreeActionNode::Eval(const TArray<int32>& Row)
 
 void ULearningDecisionTreeActionNode::ExplodeNode(TArray<ULearningDecisionTreeNode*>& NodesToExplode)
 {
-	// Do nothing
+	// ActionNode is a leaf node, nothing to explode
 }
