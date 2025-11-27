@@ -182,7 +182,7 @@ public class Table
         if (row < tableData[columnNames[0]].Count)
         {
             totalRows -= tableData[columnNames[tableData.Count - 1]][row];
-            for (int tableColumn = 0; tableColumn < columnNames.Count - 1; tableColumn++)
+            for (int tableColumn = 0; tableColumn < columnNames.Count; tableColumn++)
                 tableData[columnNames[tableColumn]].RemoveAt(row);
             return true;
         }
