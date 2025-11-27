@@ -19,7 +19,7 @@ int32 FLearningDecisionTreeTable::GetTotalRowCount() const
 	return TotalRows;
 }
 
-int32 FLearningDecisionTreeTable::GetStateCount(const FString& Column, int32 State)
+int32 FLearningDecisionTreeTable::GetStateCount(const FName& Column, int32 State)
 {
 	if (TableData.Contains(Column))
 	{
@@ -48,7 +48,7 @@ int32 FLearningDecisionTreeTable::GetStateCount(int32 ColumnIndex, int32 State)
 	return 0;
 }
 
-TArray<int32> FLearningDecisionTreeTable::GetColumnStates(const FString& Column)
+TArray<int32> FLearningDecisionTreeTable::GetColumnStates(const FName& Column)
 {
 	TArray<int32> States;
 	if (TableData.Contains(Column))
@@ -74,7 +74,7 @@ TArray<int32> FLearningDecisionTreeTable::GetColumnStates(int32 ColumnIndex)
 	return TArray<int32>();
 }
 
-int32 FLearningDecisionTreeTable::GetNumberOfStates(const FString& Column)
+int32 FLearningDecisionTreeTable::GetNumberOfStates(const FName& Column)
 {
 	return GetColumnStates(Column).Num();
 }
@@ -84,17 +84,17 @@ int32 FLearningDecisionTreeTable::GetNumberOfStates(int32 ColumnIndex)
 	return GetColumnStates(ColumnIndex).Num();
 }
 
-FString FLearningDecisionTreeTable::GetColumnName(int32 ColumnIndex) const
+FName FLearningDecisionTreeTable::GetColumnName(int32 ColumnIndex) const
 {
 	if (ColumnIndex >= 0 && ColumnIndex < ColumnNames.Num() - 1)
 	{
 		return ColumnNames[ColumnIndex];
 	}
 	UE_LOG(LogTemp, Warning, TEXT("Invalid column index: %d"), ColumnIndex);
-	return FString();
+	return FName();
 }
 
-bool FLearningDecisionTreeTable::AddColumn(const FString& Name)
+bool FLearningDecisionTreeTable::AddColumn(const FName& Name)
 {
 	if (TableData.Contains(Name))
 	{
@@ -108,10 +108,6 @@ bool FLearningDecisionTreeTable::AddColumn(const FString& Name)
 
 bool FLearningDecisionTreeTable::AddRow(const TArray<int32>& Row)
 {
-	// Row length should be ColumnNames.Num() - 1 because the last column in Table is Duplicates (managed internally)
-	// Actually, in C# implementation: `row.Length == tableData.Count - 1`
-	// The caller passes values for all feature columns + action column, but NOT the duplicate column.
-
 	if (Row.Num() == TableData.Num() - 1)
 	{
 		bool bDup = false;
@@ -168,7 +164,7 @@ bool FLearningDecisionTreeTable::RemoveRow(int32 RowIndex)
 		// Decrement TotalRows by the number of duplicates in this row
 		TotalRows -= TableData[ColumnNames.Last()][RowIndex];
 
-		for (const FString& ColName : ColumnNames)
+		for (const FName& ColName : ColumnNames)
 		{
 			TableData[ColName].RemoveAt(RowIndex);
 		}
@@ -177,7 +173,7 @@ bool FLearningDecisionTreeTable::RemoveRow(int32 RowIndex)
 	return false;
 }
 
-bool FLearningDecisionTreeTable::RemoveColumn(const FString& Column)
+bool FLearningDecisionTreeTable::RemoveColumn(const FName& Column)
 {
 	if (TableData.Contains(Column))
 	{
@@ -193,7 +189,7 @@ bool FLearningDecisionTreeTable::RemoveColumn(int32 ColumnIndex)
 {
 	if (ColumnIndex >= 0 && ColumnIndex < ColumnNames.Num())
 	{
-		FString ColName = ColumnNames[ColumnIndex];
+		FName ColName = ColumnNames[ColumnIndex];
 		TableData.Remove(ColName);
 		ColumnNames.RemoveAt(ColumnIndex);
 		RefreshTable();
@@ -202,7 +198,7 @@ bool FLearningDecisionTreeTable::RemoveColumn(int32 ColumnIndex)
 	return false;
 }
 
-float FLearningDecisionTreeTable::IndividualStateProbability(const FString& Column, int32 State)
+float FLearningDecisionTreeTable::IndividualStateProbability(const FName& Column, int32 State)
 {
 	if (TableData.Contains(Column))
 	{
@@ -235,16 +231,12 @@ float FLearningDecisionTreeTable::IndividualStateProbability(int32 ColumnIndex, 
 	return 0.0f;
 }
 
-FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(const FString& Column, int32 State)
+FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(const FName& Column, int32 State)
 {
 	FLearningDecisionTreeTable NewTable = *this; // Copy
 
 	if (NewTable.TableData.Contains(Column))
 	{
-		// Iterate backwards to safely remove
-		// However, original code iterates forward and sets row = -1 after removal.
-		// Since we copied, we can modify NewTable directly.
-
 		int32 RowCount = NewTable.GetTableRowCount();
 		// It's safer to iterate backwards when removing
 		for (int32 Row = RowCount - 1; Row >= 0; Row--)
@@ -257,16 +249,15 @@ FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(const 
 		return NewTable;
 	}
 
-	UE_LOG(LogTemp, Error, TEXT("Error FilterTableByState: Column %s not found or invalid"), *Column);
+	UE_LOG(LogTemp, Error, TEXT("Error FilterTableByState: Column %s not found or invalid"), *Column.ToString());
 	return FLearningDecisionTreeTable(); // Empty
 }
 
 FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(int32 ColumnIndex, int32 State)
 {
-	// Note: Logic in C# `FilterTableByState(int column, int state)` does `RemoveColumn(column)` at the end.
 	if (ColumnIndex >= 0 && ColumnIndex < ColumnNames.Num() - 1)
 	{
-		FString ColName = ColumnNames[ColumnIndex];
+		FName ColName = ColumnNames[ColumnIndex];
 		FLearningDecisionTreeTable NewTable = FilterTableByState(ColName, State);
 		NewTable.RemoveColumn(ColName);
 		return NewTable;
@@ -279,15 +270,12 @@ FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(int32 
 
 void FLearningDecisionTreeTable::RefreshTable()
 {
-	// Merges duplicate rows if columns were removed
-
 	if (TableData.Num() > 1 && GetTableRowCount() > 0)
 	{
 		int32 RowCount = GetTableRowCount();
 
 		for (int32 SelectedRow = 0; SelectedRow < RowCount; SelectedRow++)
 		{
-			// Need to re-check count because we might have removed rows
 			if (SelectedRow >= GetTableRowCount()) break;
 
 			for (int32 Row = SelectedRow + 1; Row < GetTableRowCount(); /* increment handled inside or loop */)
@@ -307,7 +295,6 @@ void FLearningDecisionTreeTable::RefreshTable()
 					// Merge
 					TableData[ColumnNames.Last()][SelectedRow] += TableData[ColumnNames.Last()][Row];
 					RemoveRow(Row);
-					// Do not increment Row, check the same index again (which is now a new row)
 				}
 				else
 				{
@@ -321,9 +308,9 @@ void FLearningDecisionTreeTable::RefreshTable()
 void FLearningDecisionTreeTable::DebugTable()
 {
 	FString DebugStr = "";
-	for (const FString& Name : ColumnNames)
+	for (const FName& Name : ColumnNames)
 	{
-		DebugStr += Name + " ";
+		DebugStr += Name.ToString() + " ";
 	}
 	UE_LOG(LogTemp, Log, TEXT("%s"), *DebugStr);
 
@@ -333,9 +320,9 @@ void FLearningDecisionTreeTable::DebugTable()
 		for (int32 Row = 0; Row < RowCount; Row++)
 		{
 			DebugStr = "";
-			for (const FString& Name : ColumnNames)
+			for (const FName& Name : ColumnNames)
 			{
-				DebugStr += Name + " : " + FString::FromInt(TableData[Name][Row]) + "|";
+				DebugStr += Name.ToString() + " : " + FString::FromInt(TableData[Name][Row]) + "|";
 			}
 			UE_LOG(LogTemp, Log, TEXT("%s"), *DebugStr);
 		}

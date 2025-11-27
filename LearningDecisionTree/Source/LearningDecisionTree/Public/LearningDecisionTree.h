@@ -45,7 +45,7 @@ public:
 
 	// Functions
 	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
-	void AddColumn(FString ColumnName);
+	void AddColumn(FName ColumnName);
 
 	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
 	void AddRow(const TArray<int32>& Row);

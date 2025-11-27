@@ -26,7 +26,7 @@ int32 ULearningDecisionTree::GetTotalRowCount() const
 	return Table.GetTotalRowCount();
 }
 
-void ULearningDecisionTree::AddColumn(FString ColumnName)
+void ULearningDecisionTree::AddColumn(FName ColumnName)
 {
 	Table.AddColumn(ColumnName);
 }
@@ -118,15 +118,23 @@ void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 	// Let's implement a helper to serialize the table manually to be safe and portable.
 
 	MemoryWriter << TableRef.TotalRows;
-	MemoryWriter << TableRef.ColumnNames;
+	// Serialize ColumnNames as strings
+	int32 NumCols = TableRef.ColumnNames.Num();
+	MemoryWriter << NumCols;
+	for (const FName& Name : TableRef.ColumnNames)
+	{
+		FString NameStr = Name.ToString();
+		MemoryWriter << NameStr;
+	}
 
 	int32 NumColumns = TableRef.TableData.Num();
 	MemoryWriter << NumColumns;
 	for (auto& Pair : TableRef.TableData)
 	{
-		FString Key = Pair.Key;
+		FName Key = Pair.Key;
 		TArray<int32> Value = Pair.Value;
-		MemoryWriter << Key;
+		FString KeyStr = Key.ToString();
+		MemoryWriter << KeyStr;
 		MemoryWriter << Value;
 	}
 
@@ -147,17 +155,25 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 		Table.TotalRows = 0;
 
 		MemoryReader << Table.TotalRows;
-		MemoryReader << Table.ColumnNames;
+
+		int32 NumColsInNames = 0;
+		MemoryReader << NumColsInNames;
+		for (int32 i = 0; i < NumColsInNames; i++)
+		{
+			FString NameStr;
+			MemoryReader << NameStr;
+			Table.ColumnNames.Add(FName(*NameStr));
+		}
 
 		int32 NumColumns = 0;
 		MemoryReader << NumColumns;
 		for (int32 i = 0; i < NumColumns; i++)
 		{
-			FString Key;
+			FString KeyStr;
 			TArray<int32> Value;
-			MemoryReader << Key;
+			MemoryReader << KeyStr;
 			MemoryReader << Value;
-			Table.TableData.Add(Key, Value);
+			Table.TableData.Add(FName(*KeyStr), Value);
 		}
 	}
 }
