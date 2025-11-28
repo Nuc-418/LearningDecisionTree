@@ -4,6 +4,19 @@
 #include "LearningDecisionTreeTable.generated.h"
 
 /**
+ * Wrapper struct for column data arrays.
+ * Required because TMap<FName, TArray<int32>> is not supported as a UPROPERTY directly.
+ */
+USTRUCT(BlueprintType)
+struct FLearningDecisionTreeColumn
+{
+	GENERATED_BODY()
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	TArray<int32> Data;
+};
+
+/**
  * A table structure for Learning Decision Tree.
  * Represents a dataset where columns are features and rows are instances.
  * This structure holds the training data for the ID3 algorithm.
@@ -17,11 +30,9 @@ public:
 	/**
 	 * Maps Column Name -> List of Values (Rows).
 	 * Stores the actual data of the table.
-	 * Note: Nested Containers (TMap<FName, TArray<>>) are not supported in Blueprints (BlueprintReadWrite).
-	 * We remove BlueprintReadWrite to avoid UHT error. Access should be via functions.
 	 */
-	UPROPERTY(EditAnywhere, Category = "LearningDecisionTree")
-	TMap<FName, TArray<int32>> TableData;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LearningDecisionTree")
+	TMap<FName, FLearningDecisionTreeColumn> TableData;
 
 	/** Keeps track of column order. Efficient for iterating columns by index. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LearningDecisionTree")

@@ -10,7 +10,7 @@ int32 FLearningDecisionTreeTable::GetTableRowCount() const
 	// Check if we have columns and data, return the count of the first column
 	if (ColumnNames.Num() > 0 && TableData.Contains(ColumnNames[0]))
 	{
-		return TableData[ColumnNames[0]].Num();
+		return TableData[ColumnNames[0]].Data.Num();
 	}
 	return 0;
 }
@@ -25,9 +25,9 @@ int32 FLearningDecisionTreeTable::GetStateCount(const FName& Column, int32 State
 	if (TableData.Contains(Column))
 	{
 		int32 StateCount = 0;
-		const TArray<int32>& ColumnData = TableData[Column];
+		const TArray<int32>& ColumnData = TableData[Column].Data;
 		// Last column is always duplicates count
-		const TArray<int32>& DuplicatesData = TableData[ColumnNames.Last()];
+		const TArray<int32>& DuplicatesData = TableData[ColumnNames.Last()].Data;
 
 		for (int32 Row = 0; Row < ColumnData.Num(); Row++)
 		{
@@ -56,7 +56,7 @@ TArray<int32> FLearningDecisionTreeTable::GetColumnStates(const FName& Column)
 	TArray<int32> States;
 	if (TableData.Contains(Column))
 	{
-		const TArray<int32>& ColumnData = TableData[Column];
+		const TArray<int32>& ColumnData = TableData[Column].Data;
 		for (int32 State : ColumnData)
 		{
 			if (!States.Contains(State))
@@ -104,7 +104,7 @@ bool FLearningDecisionTreeTable::AddColumn(const FName& Name)
 		return false;
 	}
 
-	TableData.Add(Name, TArray<int32>());
+	TableData.Add(Name, FLearningDecisionTreeColumn());
 	ColumnNames.Add(Name);
 	return true;
 }
@@ -127,7 +127,7 @@ bool FLearningDecisionTreeTable::AddRow(const TArray<int32>& Row)
 			int32 DupedData = 0;
 			for (int32 TableColumn = 0; TableColumn < ColumnNames.Num() - 1; TableColumn++)
 			{
-				if (TableData[ColumnNames[TableColumn]][TableRow] == Row[TableColumn])
+				if (TableData[ColumnNames[TableColumn]].Data[TableRow] == Row[TableColumn])
 				{
 					DupedData++;
 				}
@@ -144,17 +144,17 @@ bool FLearningDecisionTreeTable::AddRow(const TArray<int32>& Row)
 		if (bDup)
 		{
 			// Increment duplicate count for the existing row
-			TableData[ColumnNames.Last()][DupedRow]++;
+			TableData[ColumnNames.Last()].Data[DupedRow]++;
 		}
 		else
 		{
 			// Add new row data to all columns
 			for (int32 i = 0; i < Row.Num(); i++)
 			{
-				TableData[ColumnNames[i]].Add(Row[i]);
+				TableData[ColumnNames[i]].Data.Add(Row[i]);
 			}
 			// Initialize duplicate count to 1
-			TableData[ColumnNames.Last()].Add(1);
+			TableData[ColumnNames.Last()].Data.Add(1);
 		}
 
 		TotalRows++;
@@ -165,14 +165,14 @@ bool FLearningDecisionTreeTable::AddRow(const TArray<int32>& Row)
 
 bool FLearningDecisionTreeTable::RemoveRow(int32 RowIndex)
 {
-	if (ColumnNames.Num() > 0 && RowIndex < TableData[ColumnNames[0]].Num())
+	if (ColumnNames.Num() > 0 && RowIndex < TableData[ColumnNames[0]].Data.Num())
 	{
 		// Decrement TotalRows by the number of duplicates in this row
-		TotalRows -= TableData[ColumnNames.Last()][RowIndex];
+		TotalRows -= TableData[ColumnNames.Last()].Data[RowIndex];
 
 		for (const FName& ColName : ColumnNames)
 		{
-			TableData[ColName].RemoveAt(RowIndex);
+			TableData[ColName].Data.RemoveAt(RowIndex);
 		}
 		return true;
 	}
@@ -209,8 +209,8 @@ float FLearningDecisionTreeTable::IndividualStateProbability(const FName& Column
 	if (TableData.Contains(Column))
 	{
 		int32 StateDups = 0;
-		const TArray<int32>& ColumnData = TableData[Column];
-		const TArray<int32>& DuplicatesData = TableData[ColumnNames.Last()];
+		const TArray<int32>& ColumnData = TableData[Column].Data;
+		const TArray<int32>& DuplicatesData = TableData[ColumnNames.Last()].Data;
 
 		for (int32 Row = 0; Row < ColumnData.Num(); Row++)
 		{
@@ -247,7 +247,7 @@ FLearningDecisionTreeTable FLearningDecisionTreeTable::FilterTableByState(const 
 		// Iterate backwards to safely remove rows while iterating
 		for (int32 Row = RowCount - 1; Row >= 0; Row--)
 		{
-			if (NewTable.TableData[Column][Row] != State)
+			if (NewTable.TableData[Column].Data[Row] != State)
 			{
 				NewTable.RemoveRow(Row);
 			}
@@ -293,7 +293,7 @@ void FLearningDecisionTreeTable::RefreshTable()
 				// Check equality for all columns except the last one (duplicates count)
 				for (int32 Column = 0; Column < ColumnNames.Num() - 1; Column++)
 				{
-					if (TableData[ColumnNames[Column]][SelectedRow] == TableData[ColumnNames[Column]][Row])
+					if (TableData[ColumnNames[Column]].Data[SelectedRow] == TableData[ColumnNames[Column]].Data[Row])
 					{
 						DupedStates++;
 					}
@@ -302,7 +302,7 @@ void FLearningDecisionTreeTable::RefreshTable()
 				if (DupedStates == ColumnNames.Num() - 1)
 				{
 					// If rows are identical, merge counts and remove the duplicate
-					TableData[ColumnNames.Last()][SelectedRow] += TableData[ColumnNames.Last()][Row];
+					TableData[ColumnNames.Last()].Data[SelectedRow] += TableData[ColumnNames.Last()].Data[Row];
 					RemoveRow(Row);
 					// Do not increment Row index, check the same index again (which is now a new row)
 				}
@@ -332,7 +332,7 @@ void FLearningDecisionTreeTable::DebugTable()
 			DebugStr = "";
 			for (const FName& Name : ColumnNames)
 			{
-				DebugStr += Name.ToString() + " : " + FString::FromInt(TableData[Name][Row]) + "|";
+				DebugStr += Name.ToString() + " : " + FString::FromInt(TableData[Name].Data[Row]) + "|";
 			}
 			UE_LOG(LogTemp, Log, TEXT("%s"), *DebugStr);
 		}
@@ -341,9 +341,9 @@ void FLearningDecisionTreeTable::DebugTable()
 
 int32 FLearningDecisionTreeTable::GetDuplicateCount(int32 RowIndex) const
 {
-	if (ColumnNames.Num() > 0 && RowIndex >= 0 && RowIndex < TableData[ColumnNames.Last()].Num())
+	if (ColumnNames.Num() > 0 && RowIndex >= 0 && RowIndex < TableData[ColumnNames.Last()].Data.Num())
 	{
-		return TableData[ColumnNames.Last()][RowIndex];
+		return TableData[ColumnNames.Last()].Data[RowIndex];
 	}
 	return 0;
 }

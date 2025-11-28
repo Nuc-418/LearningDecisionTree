@@ -243,7 +243,7 @@ void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 	for (auto& Pair : TableRef.TableData)
 	{
 		FName Key = Pair.Key;
-		TArray<int32> Value = Pair.Value;
+		TArray<int32> Value = Pair.Value.Data; // Access Wrapper Data
 		FString KeyStr = Key.ToString();
 		MemoryWriter << KeyStr;
 		MemoryWriter << Value;
@@ -286,7 +286,11 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 			TArray<int32> Value;
 			MemoryReader << KeyStr;
 			MemoryReader << Value;
-			Table.TableData.Add(FName(*KeyStr), Value);
+
+			// Reconstruct Wrapper Struct
+			FLearningDecisionTreeColumn ColData;
+			ColData.Data = Value;
+			Table.TableData.Add(FName(*KeyStr), ColData);
 		}
 	}
 }
