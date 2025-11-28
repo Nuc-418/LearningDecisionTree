@@ -37,8 +37,8 @@ void ULearningDecisionTree::AddRow(const TArray<int32>& Row)
 	// Enforce max unique rows limit
 	if (MaxUniqueRows > 0 && Table.GetTableRowCount() >= MaxUniqueRows)
 	{
-		// Remove oldest row (index 0)
-		Table.RemoveRow(0);
+		UE_LOG(LogTemp, Fatal, TEXT("Table row limit reached (%d). Application terminating to prevent data loss."), MaxUniqueRows);
+		return; // Fatal will stop execution, but return for safety
 	}
 
 	Table.AddRow(Row);
@@ -90,15 +90,19 @@ void ULearningDecisionTree::TrainAsync()
 	FLearningDecisionTreeTable TableSnapshot = Table;
 
 	// Launch async task
-	Async(EAsyncExecution::Thread, [this, TableSnapshot]()
+	TWeakObjectPtr<ULearningDecisionTree> Self(this);
+	Async(EAsyncExecution::Thread, [Self, TableSnapshot]()
 	{
 		// This runs in a background thread
 		TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot = FLearningDecisionTreeTrainer::Train(TableSnapshot);
 
 		// Schedule completion on the Game Thread
-		AsyncTask(ENamedThreads::GameThread, [this, ShadowRoot]()
+		AsyncTask(ENamedThreads::GameThread, [Self, ShadowRoot]()
 		{
-			OnTrainingComplete(ShadowRoot);
+			if (Self.IsValid())
+			{
+				Self->OnTrainingComplete(ShadowRoot);
+			}
 		});
 	});
 }
