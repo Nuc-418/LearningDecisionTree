@@ -167,7 +167,7 @@ ULearningDecisionTreeNode* ULearningDecisionTree::ConvertShadowToUObject(TShared
 
 		// Copy properties
 		ANode->ActionNames = ShadowANode->ActionNames;
-		ANode->ActionCount = ShadowANode->ActionCounts;
+		ANode->ActionCounts = ShadowANode->ActionCounts;
 
 		ResultNode = ANode;
 		break;
@@ -334,6 +334,10 @@ void ULearningDecisionTree::LoadDecisionTree(FString FolderPath, FString FileNam
 
 static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node);
 static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* Outer);
+
+// Forward declarations for recursion
+void SerializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes);
+void DeserializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes, UObject* Outer);
 
 void SerializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes)
 {
