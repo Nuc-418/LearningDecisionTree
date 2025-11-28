@@ -11,7 +11,8 @@ bool FLearningDecisionTreeAsyncTest::RunTest(const FString& Parameters)
 	FLearningDecisionTreeTable TestTable;
 	TestTable.AddColumn(FName("A"));
 	TestTable.AddColumn(FName("B"));
-	TestTable.AddColumn(FName("Action")); // Last column is Action
+	TestTable.AddColumn(FName("Action"));
+	TestTable.AddColumn(FName("Duplicates")); // Last column is Duplicates (Required by AddRow logic)
 
 	// A=0, B=0 -> Action=0
 	TestTable.AddRow({0, 0, 0});
@@ -57,6 +58,7 @@ bool FLearningDecisionTreeAsyncTest::RunTest(const FString& Parameters)
     FLearningDecisionTreeTable InconsistentTable;
     InconsistentTable.AddColumn(FName("X"));
     InconsistentTable.AddColumn(FName("Action"));
+    InconsistentTable.AddColumn(FName("Duplicates")); // Required
     // Same state, different actions
     InconsistentTable.AddRow({0, 0});
     InconsistentTable.AddRow({0, 1});
