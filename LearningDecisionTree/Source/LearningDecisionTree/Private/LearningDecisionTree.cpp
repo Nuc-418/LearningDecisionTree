@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
+#include "Async/Async.h"
 
 ULearningDecisionTree::ULearningDecisionTree()
 {
@@ -33,6 +34,13 @@ void ULearningDecisionTree::AddColumn(FName ColumnName)
 
 void ULearningDecisionTree::AddRow(const TArray<int32>& Row)
 {
+	// Enforce max unique rows limit
+	if (MaxUniqueRows > 0 && Table.GetTableRowCount() >= MaxUniqueRows)
+	{
+		// Remove oldest row (index 0)
+		Table.RemoveRow(0);
+	}
+
 	Table.AddRow(Row);
 }
 
@@ -65,6 +73,119 @@ void ULearningDecisionTree::CreateDecisionTree()
 		// Remove the processed node from the queue
 		NodesToExplode.RemoveAt(0);
 	}
+}
+
+void ULearningDecisionTree::TrainAsync()
+{
+	if (bIsTraining)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Training already in progress. Ignoring request."));
+		return;
+	}
+
+	bIsTraining = true;
+
+	// Create a deep copy of the table to pass to the background thread
+	// FLearningDecisionTreeTable is a struct with TArrays/TMaps, so assignment operator does deep copy.
+	FLearningDecisionTreeTable TableSnapshot = Table;
+
+	// Launch async task
+	Async(EAsyncExecution::Thread, [this, TableSnapshot]()
+	{
+		// This runs in a background thread
+		TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot = FLearningDecisionTreeTrainer::Train(TableSnapshot);
+
+		// Schedule completion on the Game Thread
+		AsyncTask(ENamedThreads::GameThread, [this, ShadowRoot]()
+		{
+			OnTrainingComplete(ShadowRoot);
+		});
+	});
+}
+
+void ULearningDecisionTree::OnTrainingComplete(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot)
+{
+	bIsTraining = false;
+
+	if (ShadowRoot.IsValid())
+	{
+		// Convert Shadow Tree to UObject Tree
+		LDTRoot.Empty();
+		ULearningDecisionTreeNode* NewRoot = ConvertShadowToUObject(ShadowRoot, this);
+		if (NewRoot)
+		{
+			LDTRoot.Add(NewRoot);
+		}
+		UE_LOG(LogTemp, Log, TEXT("Async training complete. Decision Tree updated."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Async training failed: Invalid ShadowRoot."));
+	}
+}
+
+ULearningDecisionTreeNode* ULearningDecisionTree::ConvertShadowToUObject(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowNode, UObject* Outer)
+{
+	if (!ShadowNode.IsValid())
+	{
+		return nullptr;
+	}
+
+	ULearningDecisionTreeNode* ResultNode = nullptr;
+
+	switch (ShadowNode->GetType())
+	{
+	case FShadowNode::DecisionNode:
+	{
+		TSharedPtr<FShadowDecisionNode, ESPMode::ThreadSafe> ShadowDNode = StaticCastSharedPtr<FShadowDecisionNode>(ShadowNode);
+		ULearningDecisionTreeDecisionNode* DNode = NewObject<ULearningDecisionTreeDecisionNode>(Outer);
+
+		// Copy properties
+		DNode->BestInfoGainColumn = ShadowDNode->BestInfoGainColumn;
+		DNode->ColumnStates = ShadowDNode->ColumnStates;
+
+		// Recursively convert children
+		for (TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ChildShadow : ShadowDNode->NextNodes)
+		{
+			ULearningDecisionTreeNode* ChildUObject = ConvertShadowToUObject(ChildShadow, Outer);
+			// Note: If child is null (shouldn't happen), we might add a null entry or handle error.
+			// The original code expects matching indices, so we add it even if null (though it won't be null).
+			DNode->Nodes.Add(ChildUObject);
+		}
+
+		ResultNode = DNode;
+		break;
+	}
+	case FShadowNode::ActionNode:
+	{
+		TSharedPtr<FShadowActionNode, ESPMode::ThreadSafe> ShadowANode = StaticCastSharedPtr<FShadowActionNode>(ShadowNode);
+		ULearningDecisionTreeActionNode* ANode = NewObject<ULearningDecisionTreeActionNode>(Outer);
+
+		// Copy properties
+		ANode->ActionNames = ShadowANode->ActionNames;
+		ANode->ActionCount = ShadowANode->ActionCounts;
+
+		ResultNode = ANode;
+		break;
+	}
+	case FShadowNode::TableNode:
+	{
+		// Should not happen in a fully built tree, as TableNodes are temporary during construction.
+		// However, if the tree stopped early, we might see one.
+		TSharedPtr<FShadowTableNode, ESPMode::ThreadSafe> ShadowTNode = StaticCastSharedPtr<FShadowTableNode>(ShadowNode);
+		ULearningDecisionTreeTableNode* TNode = NewObject<ULearningDecisionTreeTableNode>(Outer);
+
+		// TableNodes don't store much persistent state other than the table itself,
+		// but in the final tree, they are usually replaced.
+		// If we return one, it's a leaf that hasn't been exploded.
+		// TNode->Init(...) requires args we don't have easily here, and TableNodes aren't useful for Eval().
+		// We'll return it, but it might not be functional for prediction.
+		ResultNode = TNode;
+		break;
+	}
+	}
+
+	return ResultNode;
 }
 
 void ULearningDecisionTree::RefreshStates(const TArray<int32>& Row)
