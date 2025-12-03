@@ -215,6 +215,12 @@ void ULearningDecisionTree::DebugTable()
 // Serialization
 // ============================================================================
 
+// Forward declarations for helper functions
+static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node);
+static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* Outer);
+void SerializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes);
+void DeserializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes, UObject* Outer);
+
 void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 {
 	// Serialize Table struct
@@ -331,13 +337,6 @@ void ULearningDecisionTree::LoadDecisionTree(FString FolderPath, FString FileNam
 }
 
 // Helpers for manual polymorphic serialization of the node tree
-
-static void SerializeSingleNode(FArchive& Ar, ULearningDecisionTreeNode* Node);
-static ULearningDecisionTreeNode* DeserializeSingleNode(FArchive& Ar, UObject* Outer);
-
-// Forward declarations for recursion
-void SerializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes);
-void DeserializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes, UObject* Outer);
 
 void SerializeNodes(FArchive& Ar, TArray<ULearningDecisionTreeNode*>& Nodes)
 {
