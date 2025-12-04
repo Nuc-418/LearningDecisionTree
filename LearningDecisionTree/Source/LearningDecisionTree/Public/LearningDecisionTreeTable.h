@@ -8,7 +8,7 @@
  * Required because TMap<FName, TArray<int32>> is not supported as a UPROPERTY directly.
  */
 USTRUCT(BlueprintType)
-struct FLearningDecisionTreeColumn
+struct LEARNINGDECISIONTREE_API FLearningDecisionTreeColumn
 {
 	GENERATED_BODY()
 
@@ -22,7 +22,7 @@ struct FLearningDecisionTreeColumn
  * This structure holds the training data for the ID3 algorithm.
  */
 USTRUCT(BlueprintType)
-struct FLearningDecisionTreeTable
+struct LEARNINGDECISIONTREE_API FLearningDecisionTreeTable
 {
 	GENERATED_BODY()
 

@@ -8,7 +8,7 @@
  * We cannot use UObjects on background threads, so we use this shadow structure.
  * We use ThreadSafe shared pointers because these are passed between threads.
  */
-struct FShadowNode
+struct LEARNINGDECISIONTREE_API FShadowNode
 {
 	virtual ~FShadowNode() {}
 
@@ -23,7 +23,7 @@ struct FShadowNode
 	virtual ENodeType GetType() const = 0;
 };
 
-struct FShadowTableNode : public FShadowNode
+struct LEARNINGDECISIONTREE_API FShadowTableNode : public FShadowNode
 {
 	FLearningDecisionTreeTable Table;
 	int32 ThisNodeIndex;
@@ -36,7 +36,7 @@ struct FShadowTableNode : public FShadowNode
 	virtual ENodeType GetType() const override { return TableNode; }
 };
 
-struct FShadowDecisionNode : public FShadowNode
+struct LEARNINGDECISIONTREE_API FShadowDecisionNode : public FShadowNode
 {
 	TArray<TSharedPtr<FShadowNode, ESPMode::ThreadSafe>> NextNodes;
 	TArray<int32> ColumnStates;
@@ -49,7 +49,7 @@ struct FShadowDecisionNode : public FShadowNode
 	virtual ENodeType GetType() const override { return DecisionNode; }
 };
 
-struct FShadowActionNode : public FShadowNode
+struct LEARNINGDECISIONTREE_API FShadowActionNode : public FShadowNode
 {
 	TArray<int32> ActionNames;
 	TArray<int32> ActionCounts;

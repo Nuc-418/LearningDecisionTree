@@ -138,12 +138,17 @@ float FLearningDecisionTreeTrainer::ColumnEntropy(const FLearningDecisionTreeTab
 
 float FLearningDecisionTreeTrainer::ArrayEntropy(const TArray<int32>& Occurrences, int32 Total)
 {
+	if (Total == 0)
+	{
+		return 0.0f;
+	}
+
 	double Entropy = 0;
 	for (int32 Occ : Occurrences)
 	{
-		float Prob = (float)Occ / Total;
-		if (Prob > 0 && Total > 0)
+		if (Occ > 0)
 		{
+			float Prob = (float)Occ / (float)Total;
 			Entropy -= Prob * FMath::Log2(Prob);
 		}
 	}

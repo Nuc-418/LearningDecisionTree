@@ -45,12 +45,17 @@ float ULearningDecisionTreeTableNode::ColumnEntropy(int32 ColumnIndex)
 
 float ULearningDecisionTreeTableNode::ArrayEntropy(const TArray<int32>& Occurrences, int32 Total)
 {
+	if (Total == 0)
+	{
+		return 0.0f;
+	}
+
 	double Entropy = 0;
 	for (int32 nOcc : Occurrences)
 	{
-		float StateOcc = (float)nOcc / (float)Total;
-		if (StateOcc != 0 && Total != 0)
+		if (nOcc > 0)
 		{
+			float StateOcc = (float)nOcc / (float)Total;
 			Entropy -= StateOcc * FMath::Log2(StateOcc);
 		}
 	}
