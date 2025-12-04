@@ -4,6 +4,7 @@
 #include "UObject/NoExportTypes.h"
 #include "LearningDecisionTreeTable.h"
 #include "LearningDecisionTreeNode.h"
+#include "Async/LearningDecisionTreeTrainer.h"
 #include "LearningDecisionTree.generated.h"
 
 /**
@@ -49,6 +50,10 @@ public:
 	UPROPERTY()
 	TArray<int32> RowRealTimeStates;
 
+	/** Maximum number of unique rows allowed in the table. 0 = no limit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LearningDecisionTree|Settings")
+	int32 MaxUniqueRows = 0;
+
 	// Helpers
 
 	/** Returns the number of columns in the table. */
@@ -76,9 +81,22 @@ public:
 	/**
 	 * Generates the decision tree based on the current data in the Table using the ID3 algorithm.
 	 * This process consumes the data and builds a node structure in LDTRoot.
+	 * WARNING: This runs on the Main Thread and may cause lag for large datasets.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
 	void CreateDecisionTree();
+
+	/**
+	 * Starts the decision tree generation in a background thread.
+	 * When finished, the main thread will update the tree structure (LDTRoot).
+	 * Safe to call during gameplay without causing frame drops.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
+	void TrainAsync();
+
+	/** Returns true if an async training task is currently running. */
+	UFUNCTION(BlueprintPure, Category = "LearningDecisionTree")
+	bool IsTraining() const { return bIsTraining; }
 
 	/** Updates the current state vector used for evaluation. */
 	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
@@ -114,4 +132,14 @@ public:
 	/** Prints table debug info to log. */
 	UFUNCTION(BlueprintCallable, Category = "LearningDecisionTree")
 	void DebugTable();
+
+private:
+	/** Flag indicating if async training is in progress. */
+	bool bIsTraining = false;
+
+	/** Callback for when the async training is complete. */
+	void OnTrainingComplete(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot);
+
+	/** Recursive helper to convert Shadow Tree back to UObject Tree. */
+	ULearningDecisionTreeNode* ConvertShadowToUObject(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowNode, UObject* Outer);
 };

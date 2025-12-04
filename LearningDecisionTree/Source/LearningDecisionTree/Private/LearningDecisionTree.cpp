@@ -6,6 +6,7 @@
 #include "Misc/Paths.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
+#include "Async/Async.h"
 
 ULearningDecisionTree::ULearningDecisionTree()
 {
@@ -33,6 +34,13 @@ void ULearningDecisionTree::AddColumn(FName ColumnName)
 
 void ULearningDecisionTree::AddRow(const TArray<int32>& Row)
 {
+	// Enforce max unique rows limit if set
+	if (MaxUniqueRows > 0 && Table.GetTableRowCount() >= MaxUniqueRows)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Table row limit reached (%d). Row not added."), MaxUniqueRows);
+		return;
+	}
+
 	Table.AddRow(Row);
 }
 
@@ -65,6 +73,116 @@ void ULearningDecisionTree::CreateDecisionTree()
 		// Remove the processed node from the queue
 		NodesToExplode.RemoveAt(0);
 	}
+}
+
+// ============================================================================
+// Async Training
+// ============================================================================
+
+void ULearningDecisionTree::TrainAsync()
+{
+	if (bIsTraining)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Training already in progress. Ignoring request."));
+		return;
+	}
+
+	bIsTraining = true;
+
+	// Create a deep copy of the table to pass to the background thread
+	FLearningDecisionTreeTable TableSnapshot = Table;
+
+	// Launch async task
+	TWeakObjectPtr<ULearningDecisionTree> Self(this);
+	Async(EAsyncExecution::Thread, [Self, TableSnapshot]()
+	{
+		// This runs in a background thread
+		TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot = FLearningDecisionTreeTrainer::Train(TableSnapshot);
+
+		// Schedule completion on the Game Thread
+		AsyncTask(ENamedThreads::GameThread, [Self, ShadowRoot]()
+		{
+			if (Self.IsValid())
+			{
+				Self->OnTrainingComplete(ShadowRoot);
+			}
+		});
+	});
+}
+
+void ULearningDecisionTree::OnTrainingComplete(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowRoot)
+{
+	bIsTraining = false;
+
+	if (ShadowRoot.IsValid())
+	{
+		// Convert Shadow Tree to UObject Tree
+		LDTRoot.Empty();
+		ULearningDecisionTreeNode* NewRoot = ConvertShadowToUObject(ShadowRoot, this);
+		if (NewRoot)
+		{
+			LDTRoot.Add(NewRoot);
+		}
+		UE_LOG(LogTemp, Log, TEXT("Async training complete. Decision Tree updated."));
+	}
+	else
+	{
+		UE_LOG(LogTemp, Error, TEXT("Async training failed: Invalid ShadowRoot."));
+	}
+}
+
+ULearningDecisionTreeNode* ULearningDecisionTree::ConvertShadowToUObject(TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ShadowNode, UObject* Outer)
+{
+	if (!ShadowNode.IsValid())
+	{
+		return nullptr;
+	}
+
+	ULearningDecisionTreeNode* ResultNode = nullptr;
+
+	switch (ShadowNode->GetType())
+	{
+	case FShadowNode::DecisionNode:
+	{
+		TSharedPtr<FShadowDecisionNode, ESPMode::ThreadSafe> ShadowDNode = StaticCastSharedPtr<FShadowDecisionNode>(ShadowNode);
+		ULearningDecisionTreeDecisionNode* DNode = NewObject<ULearningDecisionTreeDecisionNode>(Outer);
+
+		// Copy properties
+		DNode->BestInfoGainColumn = ShadowDNode->BestInfoGainColumn;
+		DNode->ColumnStates = ShadowDNode->ColumnStates;
+
+		// Recursively convert children
+		for (TSharedPtr<FShadowNode, ESPMode::ThreadSafe> ChildShadow : ShadowDNode->NextNodes)
+		{
+			ULearningDecisionTreeNode* ChildUObject = ConvertShadowToUObject(ChildShadow, Outer);
+			DNode->Nodes.Add(ChildUObject);
+		}
+
+		ResultNode = DNode;
+		break;
+	}
+	case FShadowNode::ActionNode:
+	{
+		TSharedPtr<FShadowActionNode, ESPMode::ThreadSafe> ShadowANode = StaticCastSharedPtr<FShadowActionNode>(ShadowNode);
+		ULearningDecisionTreeActionNode* ANode = NewObject<ULearningDecisionTreeActionNode>(Outer);
+
+		// Copy properties
+		ANode->ActionNames = ShadowANode->ActionNames;
+		ANode->ActionCounts = ShadowANode->ActionCounts;
+
+		ResultNode = ANode;
+		break;
+	}
+	case FShadowNode::TableNode:
+	{
+		// Should not happen in a fully built tree
+		ULearningDecisionTreeTableNode* TNode = NewObject<ULearningDecisionTreeTableNode>(Outer);
+		ResultNode = TNode;
+		break;
+	}
+	}
+
+	return ResultNode;
 }
 
 void ULearningDecisionTree::RefreshStates(const TArray<int32>& Row)
