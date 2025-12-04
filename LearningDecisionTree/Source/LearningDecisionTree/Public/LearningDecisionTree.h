@@ -8,13 +8,18 @@
 
 /**
  * Main class for Learning Decision Tree.
- * Manages the Table and the Decision Tree structure.
+ * Manages the Table and the Decision Tree structure using the ID3 algorithm.
  *
  * Usage:
- * 1. Define columns using AddColumn().
- * 2. Feed training data using AddRow().
+ * 1. Define columns using AddColumn() - feature columns first, then the Action column LAST.
+ *    Example: AddColumn("EnemyNearby"); AddColumn("LowHealth"); AddColumn("Action");
+ * 2. Feed training data using AddRow() - values for all columns including action.
+ *    Example: AddRow({1, 0, 2}); // Enemy nearby=1, LowHealth=0, Action=2
  * 3. Call CreateDecisionTree() to generate the ID3 tree.
- * 4. Use RefreshStates() and Eval() to predict actions based on new data.
+ * 4. Use RefreshStates() with feature values only, then Eval() to predict actions.
+ *    Example: RefreshStates({1, 0}); int32 Action = Eval();
+ *
+ * Note: Duplicate rows are handled automatically - no need to add a duplicates column.
  */
 UCLASS(BlueprintType)
 class LEARNINGDECISIONTREE_API ULearningDecisionTree : public UObject

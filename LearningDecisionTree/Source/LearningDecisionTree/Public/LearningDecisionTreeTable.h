@@ -23,9 +23,16 @@ public:
 	UPROPERTY(EditAnywhere, Category = "LearningDecisionTree")
 	TMap<FName, TArray<int32>> TableData;
 
-	/** Keeps track of column order. Efficient for iterating columns by index. */
+	/** Keeps track of column order. The LAST column is always the Action column. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LearningDecisionTree")
 	TArray<FName> ColumnNames;
+
+	/**
+	 * Internal array tracking duplicate counts for each physical row.
+	 * This is managed automatically - users don't need to add a duplicates column.
+	 */
+	UPROPERTY()
+	TArray<int32> DuplicateCounts;
 
 	/** Total number of logical rows (accounting for duplicates). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LearningDecisionTree")

@@ -59,8 +59,8 @@ float ULearningDecisionTreeTableNode::ArrayEntropy(const TArray<int32>& Occurren
 
 float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 {
-	// The target action column is the second to last (Last is duplicates count)
-	int32 ActionColumn = Table.ColumnNames.Num() - 2;
+	// The target action column is the last column
+	int32 ActionColumn = Table.ColumnNames.Num() - 1;
 	int32 TableRowCount = Table.GetTableRowCount();
 
 	// Base entropy of the target set
@@ -84,7 +84,7 @@ float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 					Table.TableData[Table.ColumnNames[ActionColumn]][Row] == Action)
 				{
 					// Add duplicates count to get true frequency
-					ActionsCount[IndexAction] += Table.TableData[Table.ColumnNames.Last()][Row];
+					ActionsCount[IndexAction] += Table.GetDuplicateCount(Row);
 				}
 			}
 			IndexAction++;
@@ -103,8 +103,8 @@ int32 ULearningDecisionTreeTableNode::IndexBestInfoGainColumn()
 
 	if (Table.ColumnNames.Num() > 0)
 	{
-		// Iterate all feature columns (excluding Action and Duplicates columns)
-		int32 ActionColumn = Table.ColumnNames.Num() - 2;
+		// Iterate all feature columns (excluding Action column which is the last)
+		int32 ActionColumn = Table.ColumnNames.Num() - 1;
 
 		for (int32 Column = 0; Column < ActionColumn; Column++)
 		{
@@ -125,11 +125,12 @@ int32 ULearningDecisionTreeTableNode::IndexBestInfoGainColumn()
 
 void ULearningDecisionTreeTableNode::ExplodeNode(TArray<ULearningDecisionTreeNode*>& NodesToExplode)
 {
-	int32 ActionColumn = Table.ColumnNames.Num() - 2;
+	int32 ActionColumn = Table.ColumnNames.Num() - 1;
 	float ActionColumnEntropy = ColumnEntropy(ActionColumn);
 
 	// If entropy is not zero (mixed actions) and we have feature columns left to split on
-	if (ActionColumnEntropy != 0 && Table.ColumnNames.Num() > 2)
+	// (more than just the action column)
+	if (ActionColumnEntropy != 0 && Table.ColumnNames.Num() > 1)
 	{
 		// Find best column to split
 		int32 BestCol = IndexBestInfoGainColumn();

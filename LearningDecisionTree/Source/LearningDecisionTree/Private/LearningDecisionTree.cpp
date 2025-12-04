@@ -124,6 +124,9 @@ void ULearningDecisionTree::SaveTable(FString FolderPath, FString FileName)
 		MemoryWriter << Value;
 	}
 
+	// Serialize DuplicateCounts
+	MemoryWriter << TableRef.DuplicateCounts;
+
 	FFileHelper::SaveArrayToFile(Bytes, *FullPath);
 }
 
@@ -138,6 +141,7 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 
 		Table.TableData.Empty();
 		Table.ColumnNames.Empty();
+		Table.DuplicateCounts.Empty();
 		Table.TotalRows = 0;
 
 		MemoryReader << Table.TotalRows;
@@ -163,6 +167,9 @@ void ULearningDecisionTree::LoadTable(FString FolderPath, FString FileName)
 			MemoryReader << Value;
 			Table.TableData.Add(FName(*KeyStr), Value);
 		}
+
+		// Deserialize DuplicateCounts
+		MemoryReader << Table.DuplicateCounts;
 	}
 }
 
