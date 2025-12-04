@@ -169,8 +169,8 @@ float FLearningDecisionTreeTrainer::InfoGain(const FLearningDecisionTreeTable& T
 		ActionsCount.Init(0, NumActionStates);
 
 		// Access raw data
-		const TArray<int32>& ColData = Table.TableData[Table.ColumnNames[Column]];
-		const TArray<int32>& ActionData = Table.TableData[Table.ColumnNames[ActionColumn]];
+		const TArray<int32>& ColData = Table.TableData[Table.ColumnNames[Column]].Data;
+		const TArray<int32>& ActionData = Table.TableData[Table.ColumnNames[ActionColumn]].Data;
 
 		for (int32 Row = 0; Row < ColData.Num(); Row++)
 		{

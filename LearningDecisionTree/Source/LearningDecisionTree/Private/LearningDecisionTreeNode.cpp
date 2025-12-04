@@ -80,8 +80,8 @@ float ULearningDecisionTreeTableNode::InfoGain(int32 ColumnIndex)
 		{
 			for (int32 Row = 0; Row < TableRowCount; Row++)
 			{
-				if (Table.TableData[Table.ColumnNames[ColumnIndex]][Row] == State &&
-					Table.TableData[Table.ColumnNames[ActionColumn]][Row] == Action)
+				if (Table.TableData[Table.ColumnNames[ColumnIndex]].Data[Row] == State &&
+					Table.TableData[Table.ColumnNames[ActionColumn]].Data[Row] == Action)
 				{
 					// Add duplicates count to get true frequency
 					ActionsCount[IndexAction] += Table.GetDuplicateCount(Row);
