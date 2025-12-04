@@ -265,7 +265,8 @@ int32 ULearningDecisionTreeActionNode::RandAction(const TArray<int32>& Probs)
 	}
 
 	// Random selection weighted by counts
-	int32 Rand = FMath::RandRange(0, Total);
+	// FMath::RandRange is inclusive on both ends, so use Total - 1
+	int32 Rand = FMath::RandRange(0, Total - 1);
 
 	int32 CurrentTotal = 0;
 	int32 IndexObstacle = -1;
