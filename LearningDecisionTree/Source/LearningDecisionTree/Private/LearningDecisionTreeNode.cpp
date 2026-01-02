@@ -264,10 +264,21 @@ void ULearningDecisionTreeActionNode::Init(const TArray<int32>& InActionNames, c
 
 int32 ULearningDecisionTreeActionNode::RandAction(const TArray<int32>& Probs)
 {
+	if (Probs.Num() == 0)
+	{
+		return -1;
+	}
+
 	int32 Total = 0;
 	for (int32 Prob : Probs)
 	{
 		Total += Prob;
+	}
+
+	// If all probabilities are 0, return first index
+	if (Total == 0)
+	{
+		return 0;
 	}
 
 	// Random selection weighted by counts

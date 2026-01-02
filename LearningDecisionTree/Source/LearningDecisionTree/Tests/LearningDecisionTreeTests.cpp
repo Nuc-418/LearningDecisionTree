@@ -162,3 +162,40 @@ bool FLearningDecisionTreeTableTest::RunTest(const FString& Parameters)
 
 	return true;
 }
+
+/**
+ * Test that RefreshTable preserves TotalRows when merging duplicate rows after column removal.
+ * This is a regression test for a bug where TotalRows was incorrectly decremented.
+ */
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FLearningDecisionTreeRefreshTableTest, "LearningDecisionTree.RefreshTablePreservesTotalRows", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FLearningDecisionTreeRefreshTableTest::RunTest(const FString& Parameters)
+{
+	FLearningDecisionTreeTable Table;
+	Table.AddColumn(FName("A"));
+	Table.AddColumn(FName("B"));
+	Table.AddColumn(FName("Action"));
+
+	// Add rows that will become duplicates when column "A" is removed
+	// Row 1: A=0, B=1, Action=5
+	// Row 2: A=1, B=1, Action=5  (different A, same B and Action)
+	// Row 3: A=2, B=1, Action=5  (different A, same B and Action)
+	Table.AddRow({0, 1, 5});
+	Table.AddRow({1, 1, 5});
+	Table.AddRow({2, 1, 5});
+
+	// Before removal: 3 physical rows, TotalRows = 3
+	TestEqual(TEXT("Initial physical rows should be 3"), Table.GetTableRowCount(), 3);
+	TestEqual(TEXT("Initial TotalRows should be 3"), Table.GetTotalRowCount(), 3);
+
+	// Remove column "A" - this should trigger RefreshTable and merge duplicates
+	Table.RemoveColumn(FName("A"));
+
+	// After removal: All rows become {B=1, Action=5} and should merge into 1 physical row
+	// But TotalRows should STILL be 3 because we haven't removed any logical rows
+	TestEqual(TEXT("After column removal, physical rows should be 1"), Table.GetTableRowCount(), 1);
+	TestEqual(TEXT("After column removal, TotalRows should still be 3"), Table.GetTotalRowCount(), 3);
+	TestEqual(TEXT("Merged row should have DuplicateCount of 3"), Table.GetDuplicateCount(0), 3);
+
+	return true;
+}

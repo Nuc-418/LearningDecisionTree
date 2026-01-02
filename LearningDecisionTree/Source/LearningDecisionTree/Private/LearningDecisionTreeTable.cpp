@@ -294,9 +294,17 @@ void FLearningDecisionTreeTable::RefreshTable()
 
 				if (DupedStates == ColumnNames.Num())
 				{
-					// If rows are identical, merge counts and remove the duplicate
+					// If rows are identical, merge counts and remove the duplicate physical row
+					// Note: We DON'T use RemoveRow() here because that would decrement TotalRows,
+					// but TotalRows should stay the same when merging - we're just combining physical rows.
 					DuplicateCounts[SelectedRow] += DuplicateCounts[Row];
-					RemoveRow(Row);
+
+					// Remove the duplicate row data directly without affecting TotalRows
+					for (const FName& ColName : ColumnNames)
+					{
+						TableData[ColName].Data.RemoveAt(Row);
+					}
+					DuplicateCounts.RemoveAt(Row);
 					// Do not increment Row index, check the same index again (which is now a new row)
 				}
 				else
